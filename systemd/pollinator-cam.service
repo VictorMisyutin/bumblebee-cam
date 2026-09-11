@@ -1,0 +1,30 @@
+[Unit]
+Description=Pollinator motion-triggered camera capture
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pollinator
+Group=pollinator
+SupplementaryGroups=video render
+WorkingDirectory=/opt/pollinator
+ExecStart=/usr/bin/python3 /opt/pollinator/pollinator_cam.py /etc/pollinator
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Log to journald only; nothing writes to the SD card root filesystem.
+StandardOutput=journal
+StandardError=journal
+
+# Sandboxing — the capture service only needs its data directory.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/pollinator /etc/pollinator
+
+[Install]
+WantedBy=multi-user.target

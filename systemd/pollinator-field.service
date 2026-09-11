@@ -1,0 +1,27 @@
+[Unit]
+Description=Pollinator field UI (live view + capture browser)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pollinator
+Group=pollinator
+WorkingDirectory=/opt/pollinator
+Environment=POLLINATOR_FIELD_TOKEN=
+ExecStart=/usr/bin/python3 /opt/pollinator/pollinator_field.py \
+  /srv/pollinator/images --config /etc/pollinator --host 0.0.0.0 --port 8020
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/pollinator
+ReadOnlyPaths=/run/pollinator
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+{
+  "device_id": "CHANGEME",
+  "lens_position": 2.8,
+  "motion_rois": [],
+  "roi_enabled": true,
+  "roi_x1": 158,
+  "roi_y1": 371,
+  "roi_x2": 204,
+  "roi_y2": 418,
+  "sensor_crop": 1.1,
+  "motion_pixels": 1180,
+  "motion_confirm_frames": 2,
+  "motion_threshold": 34
+}
