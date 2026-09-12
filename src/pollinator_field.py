@@ -572,7 +572,7 @@ class Handler(BaseHTTPRequestHandler):
                 # /etc/pollinator, not /run: both services share /run via
                 # RuntimeDirectory, and the bind mount is read-only in this
                 # namespace. CONFIG_DIR is already writable here (ROI saves).
-                req_dir = CAM_CONFIG_DIR if os.path.isdir(CAM_CONFIG_DIR) else "/etc/pollinator"
+                req_dir = CONFIG_DIR if CONFIG_DIR and os.path.isdir(CONFIG_DIR) else "/etc/pollinator"
                 tmp = os.path.join(req_dir, ".request.tmp")
                 with open(tmp, "w", encoding="utf-8") as fh:
                     fh.write(action)
@@ -1013,8 +1013,7 @@ function syncCtl(id,val,fmt){
 function syncControls(s){
   syncCtl("cLens",s.lens_position,v=>v.toFixed(1)+(v<0.05?" (inf)":" ("+(100/v).toFixed(0)+" cm)"));
   syncCtl("cZoom",s.sensor_crop,v=>v.toFixed(1)+"×");
-  syncCtl("cMp",s.motion_pixels,v=>v.toLocaleString()+" px");
-  syncCtl("cMt",s.motion_threshold,v=>String(Math.round(v)));
+  syncCtl("cMp",s.motion_threshold,v=>v.toLocaleString()+" px");
   syncCtl("cCf",s.motion_confirm_frames,v=>String(v));
   syncCtl("cCd",s.cooldown_seconds,v=>v+" s");
   if(!touched.cDup)$("#cDup").checked=!!s.duplicate_suppression;
