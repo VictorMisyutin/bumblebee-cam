@@ -98,13 +98,17 @@ def run_autofocus_sweep(picam2, cfg, rois, log):
         return None, None, []
 
     H, W = picam2.capture_array().shape[:2]
-    if rois:
-        x1, y1 = max(0, min(r[0] for r in rois)), max(0, min(r[1] for r in rois))
-        x2, y2 = min(W, max(r[2] for r in rois)), min(H, max(r[3] for r in rois))
-    else:
-        x1, y1, x2, y2 = W // 3, H // 3, 2 * W // 3, 2 * H // 3
-    if x2 - x1 < 16 or y2 - y1 < 16:
-        x1, y1, x2, y2 = W // 3, H // 3, 2 * W // 3, 2 * H // 3
+    # Measure each ROI separately and average. Hulling several scattered ROIs
+    # produces a box covering most of the frame, which just focuses on whatever
+    # background happens to have the hardest edges.
+    boxes = []
+    for r in (rois or []):
+        bx1, by1 = max(0, int(r[0])), max(0, int(r[1]))
+        bx2, by2 = min(W, int(r[2])), min(H, int(r[3]))
+        if bx2 - bx1 >= 16 and by2 - by1 >= 16:
+            boxes.append((bx1, by1, bx2, by2))
+    if not boxes:
+        boxes = [(W // 3, H // 3, 2 * W // 3, 2 * H // 3)]
 
     steps, settle = 24, 0.45
     best_lens, best_sharp, table = None, -1.0, []
@@ -115,8 +119,10 @@ def run_autofocus_sweep(picam2, cfg, rois, log):
             lp = lo + (hi - lo) * i / steps
             picam2.set_controls({"LensPosition": float(lp)})
             time.sleep(settle)
-            g = cv2.cvtColor(picam2.capture_array(), cv2.COLOR_RGB2GRAY)[y1:y2, x1:x2]
-            sharp = float(cv2.Laplacian(g, cv2.CV_64F).var())
+            full = cv2.cvtColor(picam2.capture_array(), cv2.COLOR_RGB2GRAY)
+            vals = [float(cv2.Laplacian(full[b1:b3, b0:b2], cv2.CV_64F).var())
+                    for b0, b1, b2, b3 in boxes]
+            sharp = sum(vals) / len(vals)
             table.append((round(lp, 2), round(sharp, 1)))
             if sharp > best_sharp:
                 best_lens, best_sharp = lp, sharp
@@ -125,7 +131,13 @@ def run_autofocus_sweep(picam2, cfg, rois, log):
         log.warning("Autofocus sweep failed: %s", exc)
         return None, None, table
 
-    log.info("Autofocus sweep %s", table)
+    log.info("Autofocus sweep over %d ROI(s): %s", len(boxes), table)
+    if best_lens is not None and (best_lens <= lo + 1e-6 or best_lens >= hi - 1e-6):
+        log.warning(
+            "Autofocus peak at the %s end of the lens range (%.2f). The subject is "
+            "probably outside the focus range, or the ROIs are seeing background.",
+            "near" if best_lens >= hi - 1e-6 else "far", best_lens,
+        )
     if best_lens is not None:
         picam2.set_controls({"LensPosition": float(best_lens)})
     return best_lens, best_sharp, table
