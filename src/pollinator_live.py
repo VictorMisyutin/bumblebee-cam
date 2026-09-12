@@ -108,6 +108,10 @@ def publish(frame, motion_pixels, cfg, rois=None, threshold=None, min_interval=0
             "motion_threshold": int(threshold if threshold is not None else cfg.get("motion_pixels", 0)),
             "motion_frame_pixels": int(cfg.get("lowres_width", 0)) * int(cfg.get("lowres_height", 0)),
             "sharpness": round(sharpness, 1),
+            # cfg's motion_threshold is the per-pixel brightness delta (0-255).
+            # Published under a distinct name because "motion_threshold" in this
+            # payload already means the configured trigger count.
+            "pixel_delta": cfg.get("motion_threshold"),
             "lens_position": cfg.get("lens_position"),
             "autofocus_mode": cfg.get("autofocus_mode"),
             "lowres": [cfg.get("lowres_width"), cfg.get("lowres_height")],

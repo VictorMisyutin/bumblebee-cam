@@ -1014,6 +1014,7 @@ function syncControls(s){
   syncCtl("cLens",s.lens_position,v=>v.toFixed(1)+(v<0.05?" (inf)":" ("+(100/v).toFixed(0)+" cm)"));
   syncCtl("cZoom",s.sensor_crop,v=>v.toFixed(1)+"×");
   syncCtl("cMp",s.motion_threshold,v=>v.toLocaleString()+" px");
+  syncCtl("cMt",s.pixel_delta,v=>String(Math.round(v)));
   syncCtl("cCf",s.motion_confirm_frames,v=>String(v));
   syncCtl("cCd",s.cooldown_seconds,v=>v+" s");
   if(!touched.cDup)$("#cDup").checked=!!s.duplicate_suppression;
