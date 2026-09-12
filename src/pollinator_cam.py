@@ -46,7 +46,7 @@ def _handle_sighup(_signum, _frame):
 
 
 REQUEST_PATH = "/run/pollinator/request"
-_ALLOWED_REQUESTS = {"autofocus", "reset-background"}
+_ALLOWED_REQUESTS = {"autofocus", "set-reference", "reset-background"}
 
 
 def _take_request():
@@ -334,15 +334,28 @@ def main():
                 background = None
                 motion_streak = 0
                 continue
-            if action == "reset-background":
-                log.info("Background model reset by request")
+            if action in ("set-reference", "reset-background"):
+                log.info("Reference frame reset by request")
                 background = None
                 motion_streak = 0
                 continue
 
             if not is_within_active_hours(cfg):
+                # Keep publishing and keep feeding the watchdog. Going silent
+                # for twelve hours makes systemd kill us every WatchdogSec all
+                # night, and the Live tab goes dark exactly when you are trying
+                # to check the aim.
                 pollinator_live.note("skip_hours")  # POLLINATOR_COUNTERS
-                time.sleep(cfg["frame_sleep_seconds"])
+                try:
+                    pollinator_live.publish(
+                        picam2.capture_array(), 0, cfg,
+                        rois=motion_rois, threshold=cfg["motion_pixels"],
+                    )
+                except Exception as exc:
+                    log.debug("Idle publish failed: %s", exc)
+                pollinator_live.heartbeat()  # POLLINATOR_STABILITY
+                background = None
+                time.sleep(max(1.0, cfg["frame_sleep_seconds"]))
                 continue
 
             frame = picam2.capture_array()

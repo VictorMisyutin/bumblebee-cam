@@ -23,7 +23,7 @@ help:
 
 code:
 	sudo install -m 0644 src/*.py $(PREFIX)/
-	sudo systemctl restart pollinator-cam.service
+	sudo systemctl restart $(SERVICES)
 
 config:
 	sudo install -m 0644 config/baseline.json $(CONFDIR)/

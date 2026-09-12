@@ -565,7 +565,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"ok": True, "signalled": sent}), "application/json")
             elif u.path == "/api/action":
                 action = str(body.get("action", ""))[:32]
-                if action not in {"autofocus", "reset-background"}:
+                if action not in {"autofocus", "set-reference", "reset-background"}:
                     return self._send(400, '{"error":"unknown action"}', "application/json")
                 # One word into a tmpfs file the capture service polls. It owns
                 # the sensor exclusively, so it has to do the work, not us.
@@ -820,7 +820,7 @@ body.selmode .tile .ck{display:flex}
           <input type="range" id="cLens" min="0" max="15" step="0.1">
           <div class="row" style="margin-top:6px">
             <button id="btnAF">Autofocus</button>
-            <button id="btnBg">Reset background</button>
+            <button id="btnBg">Set reference frame</button>
           </div>
           <p class="hint">Dioptres. Distance = 100 ÷ value. Sweep it and stop where <b>sharpness</b> above peaks.</p></div>
         <div class="ctl"><label>Zoom <span id="vZoom">—</span></label>
@@ -988,7 +988,7 @@ async function doAction(btn,action,msg){
 }
 document.addEventListener("click",e=>{
   if(e.target.id==="btnAF")    doAction("btnAF","autofocus","Autofocus running — watch the log");
-  if(e.target.id==="btnBg")    doAction("btnBg","reset-background","Background model cleared");
+  if(e.target.id==="btnBg")    doAction("btnBg","set-reference","Reference frame set from the current view");
 });
 
 bindCtl("cLens","lens_position",v=>v.toFixed(1)+(v<0.05?" (inf)":" ("+(100/v).toFixed(0)+" cm)"));
