@@ -563,6 +563,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, '{"error":"key not settable"}', "application/json")
                 sent = set_config_value(key, value)
                 self._send(200, json.dumps({"ok": True, "signalled": sent}), "application/json")
+            elif u.path == "/api/action":
+                action = str(body.get("action", ""))[:32]
+                if action not in {"autofocus", "reset-background"}:
+                    return self._send(400, '{"error":"unknown action"}', "application/json")
+                # One word into a tmpfs file the capture service polls. It owns
+                # the sensor exclusively, so it has to do the work, not us.
+                os.makedirs(RUN_DIR, exist_ok=True)
+                tmp = os.path.join(RUN_DIR, "request.tmp")
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    fh.write(action)
+                os.replace(tmp, os.path.join(RUN_DIR, "request"))
+                self._send(200, json.dumps({"ok": True, "action": action}), "application/json")
             elif u.path == "/api/zip":
                 import io, zipfile
                 date = body.get("date")
@@ -778,7 +790,7 @@ body.selmode .tile .ck{display:flex}
   <h1>Pollinator field view</h1>
   <span class="pill" id="dev">connecting</span>
   <span class="pill" id="age"></span>
-  <span class="muted" style="font-size:11px">v3.3</span>
+  <span class="muted" style="font-size:11px">v3.5</span>
   <nav>
     <button id="tabLive" class="on">Live</button>
     <button id="tabGal">Captures</button>
@@ -805,7 +817,11 @@ body.selmode .tile .ck{display:flex}
       <div class="roibox" style="margin-bottom:9px">
         <h3>Camera</h3>
         <div class="ctl"><label>Focus <span id="vLens">—</span></label>
-          <input type="range" id="cLens" min="0.5" max="10" step="0.1">
+          <input type="range" id="cLens" min="0" max="15" step="0.1">
+          <div class="row" style="margin-top:6px">
+            <button id="btnAF">Autofocus</button>
+            <button id="btnBg">Reset background</button>
+          </div>
           <p class="hint">Dioptres. Distance = 100 ÷ value. Sweep it and stop where <b>sharpness</b> above peaks.</p></div>
         <div class="ctl"><label>Zoom <span id="vZoom">—</span></label>
           <input type="range" id="cZoom" min="1" max="4" step="0.1">
@@ -960,7 +976,22 @@ function bindChk(id,key){
     touched[id]=0;
   });
 }
-bindCtl("cLens","lens_position",v=>v.toFixed(1)+" ("+(100/v).toFixed(0)+" cm)");
+async function doAction(btn,action,msg){
+  const el=$("#"+btn); if(!el) return;
+  const old=el.textContent; el.disabled=true; el.textContent="working…";
+  try{
+    const r=await post("/api/action",{action:action});
+    toast(r.ok?msg:("failed: "+(r.error||"?")));
+  }catch(e){ toast("failed: "+e); }
+  // The sweep steps 25 lens positions at ~0.45s each, so ~13s plus overhead.
+  setTimeout(()=>{el.disabled=false;el.textContent=old;},action==="autofocus"?16000:1500);
+}
+document.addEventListener("click",e=>{
+  if(e.target.id==="btnAF")    doAction("btnAF","autofocus","Autofocus running — watch the log");
+  if(e.target.id==="btnBg")    doAction("btnBg","reset-background","Background model cleared");
+});
+
+bindCtl("cLens","lens_position",v=>v.toFixed(1)+(v<0.05?" (inf)":" ("+(100/v).toFixed(0)+" cm)"));
 bindCtl("cZoom","sensor_crop",v=>v.toFixed(1)+"×");
 bindCtl("cMp","motion_pixels",v=>v.toLocaleString()+" px",v=>Math.round(v));
 bindCtl("cMt","motion_threshold",v=>String(Math.round(v)),v=>Math.round(v));
@@ -977,7 +1008,7 @@ function syncCtl(id,val,fmt){
   el.value=val;$("#v"+id.slice(1)).textContent=fmt(+val);
 }
 function syncControls(s){
-  syncCtl("cLens",s.lens_position,v=>v.toFixed(1)+" ("+(100/v).toFixed(0)+" cm)");
+  syncCtl("cLens",s.lens_position,v=>v.toFixed(1)+(v<0.05?" (inf)":" ("+(100/v).toFixed(0)+" cm)"));
   syncCtl("cZoom",s.sensor_crop,v=>v.toFixed(1)+"×");
   syncCtl("cMp",s.motion_threshold,v=>v.toLocaleString()+" px");
   syncCtl("cCf",s.motion_confirm_frames,v=>String(v));
