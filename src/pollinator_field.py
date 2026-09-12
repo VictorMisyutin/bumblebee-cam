@@ -569,11 +569,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, '{"error":"unknown action"}', "application/json")
                 # One word into a tmpfs file the capture service polls. It owns
                 # the sensor exclusively, so it has to do the work, not us.
-                os.makedirs(RUN_DIR, exist_ok=True)
-                tmp = os.path.join(RUN_DIR, "request.tmp")
+                # /etc/pollinator, not /run: both services share /run via
+                # RuntimeDirectory, and the bind mount is read-only in this
+                # namespace. CONFIG_DIR is already writable here (ROI saves).
+                req_dir = CAM_CONFIG_DIR if os.path.isdir(CAM_CONFIG_DIR) else "/etc/pollinator"
+                tmp = os.path.join(req_dir, ".request.tmp")
                 with open(tmp, "w", encoding="utf-8") as fh:
                     fh.write(action)
-                os.replace(tmp, os.path.join(RUN_DIR, "request"))
+                os.replace(tmp, os.path.join(req_dir, ".request"))
                 self._send(200, json.dumps({"ok": True, "action": action}), "application/json")
             elif u.path == "/api/zip":
                 import io, zipfile
@@ -1010,7 +1013,8 @@ function syncCtl(id,val,fmt){
 function syncControls(s){
   syncCtl("cLens",s.lens_position,v=>v.toFixed(1)+(v<0.05?" (inf)":" ("+(100/v).toFixed(0)+" cm)"));
   syncCtl("cZoom",s.sensor_crop,v=>v.toFixed(1)+"×");
-  syncCtl("cMp",s.motion_threshold,v=>v.toLocaleString()+" px");
+  syncCtl("cMp",s.motion_pixels,v=>v.toLocaleString()+" px");
+  syncCtl("cMt",s.motion_threshold,v=>String(Math.round(v)));
   syncCtl("cCf",s.motion_confirm_frames,v=>String(v));
   syncCtl("cCd",s.cooldown_seconds,v=>v+" s");
   if(!touched.cDup)$("#cDup").checked=!!s.duplicate_suppression;

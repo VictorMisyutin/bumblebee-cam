@@ -45,21 +45,33 @@ def _handle_sighup(_signum, _frame):
     _reload_requested = True
 
 
-REQUEST_PATH = "/run/pollinator/request"
+def _request_path(config_path):
+    base = config_path if os.path.isdir(config_path) else os.path.dirname(config_path)
+    return os.path.join(base or "/etc/pollinator", ".request")
+
+
+REQUEST_PATH = "/run/pollinator/request"   # legacy, still honoured
 _ALLOWED_REQUESTS = {"autofocus", "set-reference", "reset-background"}
 
 
-def _take_request():
+def _take_request(config_path=None):
     """Read and consume a one-word request from the field UI, if any."""
-    try:
-        with open(REQUEST_PATH, encoding="utf-8") as fh:
-            action = fh.read(32).strip().lower()
-    except OSError:
+    paths = [REQUEST_PATH]
+    if config_path:
+        paths.insert(0, _request_path(config_path))
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                action = fh.read(32).strip().lower()
+        except OSError:
+            continue
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        break
+    else:
         return None
-    try:
-        os.unlink(REQUEST_PATH)
-    except OSError:
-        pass
     if action in _ALLOWED_REQUESTS:
         return action
     if action:
@@ -323,7 +335,7 @@ def main():
                 maybe_reload_config()
                 last_config_check = now
 
-            action = _take_request()
+            action = _take_request(config_path)
             if action == "autofocus":
                 lens, sharp, _t = run_autofocus_sweep(picam2, cfg, motion_rois, log)
                 if lens is not None:
