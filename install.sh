@@ -5,7 +5,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 apt-get update
-apt-get install -y python3-picamera2 python3-opencv python3-numpy
+apt-get install -y --no-install-recommends python3-picamera2 python3-opencv python3-numpy
 
 id -u pollinator &>/dev/null || useradd -r -s /usr/sbin/nologin -G video pollinator
 
