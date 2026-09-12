@@ -4,6 +4,7 @@ import sys
 import time
 import logging
 import os
+import json
 from datetime import datetime
 
 import cv2
@@ -42,6 +43,92 @@ def _handle_sighup(_signum, _frame):
     global _reload_requested
     log.info("Received SIGHUP, config reload requested")
     _reload_requested = True
+
+
+REQUEST_PATH = "/run/pollinator/request"
+_ALLOWED_REQUESTS = {"autofocus", "reset-background"}
+
+
+def _take_request():
+    """Read and consume a one-word request from the field UI, if any."""
+    try:
+        with open(REQUEST_PATH, encoding="utf-8") as fh:
+            action = fh.read(32).strip().lower()
+    except OSError:
+        return None
+    try:
+        os.unlink(REQUEST_PATH)
+    except OSError:
+        pass
+    if action in _ALLOWED_REQUESTS:
+        return action
+    if action:
+        log.warning("Ignoring unknown request: %r", action)
+    return None
+
+
+def _write_device_key(config_path, key, value):
+    """Write one key into device.json atomically. baseline.json is untouched."""
+    path = os.path.join(config_path, "device.json") if os.path.isdir(config_path) else config_path
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        data = {}
+    data[key] = value
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp, path)
+
+
+def run_autofocus_sweep(picam2, cfg, rois, log):
+    """Step the lens across its range and return the sharpest position.
+
+    Sharpness is measured inside the motion ROIs when set, otherwise the
+    centre third. Measuring the whole frame is dominated by background and
+    will happily focus on the dirt behind the flower.
+    """
+    try:
+        from libcamera import controls as _ctrls
+        lo, hi, _cur = picam2.camera_controls["LensPosition"]
+    except Exception as exc:
+        log.warning("Autofocus sweep unavailable: %s", exc)
+        return None, None, []
+
+    H, W = picam2.capture_array().shape[:2]
+    if rois:
+        x1, y1 = max(0, min(r[0] for r in rois)), max(0, min(r[1] for r in rois))
+        x2, y2 = min(W, max(r[2] for r in rois)), min(H, max(r[3] for r in rois))
+    else:
+        x1, y1, x2, y2 = W // 3, H // 3, 2 * W // 3, 2 * H // 3
+    if x2 - x1 < 16 or y2 - y1 < 16:
+        x1, y1, x2, y2 = W // 3, H // 3, 2 * W // 3, 2 * H // 3
+
+    steps, settle = 24, 0.45
+    best_lens, best_sharp, table = None, -1.0, []
+    try:
+        picam2.set_controls({"AfMode": _ctrls.AfModeEnum.Manual})
+        time.sleep(0.3)
+        for i in range(steps + 1):
+            lp = lo + (hi - lo) * i / steps
+            picam2.set_controls({"LensPosition": float(lp)})
+            time.sleep(settle)
+            g = cv2.cvtColor(picam2.capture_array(), cv2.COLOR_RGB2GRAY)[y1:y2, x1:x2]
+            sharp = float(cv2.Laplacian(g, cv2.CV_64F).var())
+            table.append((round(lp, 2), round(sharp, 1)))
+            if sharp > best_sharp:
+                best_lens, best_sharp = lp, sharp
+            pollinator_live.heartbeat()   # the sweep takes ~12s; feed the watchdog
+    except Exception as exc:
+        log.warning("Autofocus sweep failed: %s", exc)
+        return None, None, table
+
+    log.info("Autofocus sweep %s", table)
+    if best_lens is not None:
+        picam2.set_controls({"LensPosition": float(best_lens)})
+    return best_lens, best_sharp, table
 
 
 def ensure_dirs(cfg):
@@ -140,7 +227,7 @@ def main():
         if cfg["config_reload_seconds"] <= 0 and not force:
             return
         try:
-            mtime = os.path.getmtime(config_path)
+            mtime = _config_mtime(config_path)
         except OSError:
             return
         if not force and mtime == config_mtime:
@@ -154,6 +241,8 @@ def main():
         last_capture_hash = None
         log.info("Reloaded config from %s (%s motion ROI(s))", config_path, len(motion_rois))
         apply_sensor_crop(picam2, cfg, log=log)  # POLLINATOR_ZOOM
+        if cfg.get("autofocus_enabled", True):
+            enable_continuous_autofocus(picam2, log=log, cfg=cfg)
 
     def capture_still(preview_frame=None):
         nonlocal last_capture, background, motion_streak, last_capture_hash
@@ -221,6 +310,23 @@ def main():
             elif cfg["config_reload_seconds"] > 0 and (now - last_config_check) >= cfg["config_reload_seconds"]:
                 maybe_reload_config()
                 last_config_check = now
+
+            action = _take_request()
+            if action == "autofocus":
+                lens, sharp, _t = run_autofocus_sweep(picam2, cfg, motion_rois, log)
+                if lens is not None:
+                    log.info("Autofocus: lens_position=%.2f (~%.0f cm) sharpness=%.0f",
+                             lens, 100.0 / lens if lens > 0.05 else float("inf"), sharp)
+                    _write_device_key(config_path, "lens_position", round(float(lens), 2))
+                    maybe_reload_config(force=True)
+                background = None
+                motion_streak = 0
+                continue
+            if action == "reset-background":
+                log.info("Background model reset by request")
+                background = None
+                motion_streak = 0
+                continue
 
             if not is_within_active_hours(cfg):
                 pollinator_live.note("skip_hours")  # POLLINATOR_COUNTERS
