@@ -55,7 +55,9 @@ printf '[Journal]\nStorage=persistent\nSystemMaxUse=100M\n' \
   > /etc/systemd/journald.conf.d/99-persistent.conf
 systemctl restart systemd-journald && journalctl --flush
 
-( crontab -l 2>/dev/null | grep -v -e heartbeat.sh -e netcheck.sh
+# `|| true`: on a fresh Pi root has no crontab, so `crontab -l` fails and,
+# with pipefail, used to abort the whole script here without any message.
+( { crontab -l 2>/dev/null || true; } | grep -v -e heartbeat.sh -e netcheck.sh || true
   echo '* * * * * /usr/local/bin/heartbeat.sh'
   echo '*/2 * * * * /usr/local/bin/netcheck.sh' ) | crontab -
 
