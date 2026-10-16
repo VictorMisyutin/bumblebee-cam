@@ -1,5 +1,5 @@
 {
-  "_comment": "Fleet-wide policy. Identical on every camera. Version-controlled. Overwritten by provision.sh. Per-camera calibration belongs in device.json, never here.",
+  "_comment": "Fleet-wide policy. Identical on every camera. Version-controlled. Overwritten by install.sh and `make config`. Per-camera calibration belongs in device.json, never here.",
   "output_base": "/srv/pollinator/images",
   "lowres_width": 640,
   "lowres_height": 480,

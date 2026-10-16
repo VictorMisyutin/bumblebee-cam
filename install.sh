@@ -9,7 +9,12 @@ apt-get install -y --no-install-recommends python3-picamera2 python3-opencv pyth
 
 id -u pollinator &>/dev/null || useradd -r -s /usr/sbin/nologin -G video pollinator
 
-install -d -o root -g root /opt/pollinator /etc/pollinator
+install -d -o root -g root /opt/pollinator
+# /etc/pollinator must be group-writable by `pollinator`: the field UI saves
+# ROIs/sliders into device.json and drops .request files here, and the capture
+# service writes lens_position after an autofocus sweep. Root-only = those
+# buttons fail with "Permission denied" on a fresh install.
+install -d -o root -g pollinator -m 0775 /etc/pollinator
 install -d -o pollinator -g pollinator /srv/pollinator/images
 
 # Python deploys FLAT — imports have no package structure
@@ -17,9 +22,14 @@ install -m 0644 "$SRC"/src/*.py /opt/pollinator/
 install -m 0644 "$SRC"/config/baseline.json /etc/pollinator/
 
 if [[ ! -f /etc/pollinator/device.json ]]; then
-  install -m 0644 "$SRC"/config/device.json.example /etc/pollinator/device.json
-  echo "!! Seeded /etc/pollinator/device.json — set device_id before running."
+  # device_id defaults to the hostname (bumblebee001, bumblebee002, ...).
+  sed "s/\"CHANGEME\"/\"$(hostname)\"/" "$SRC"/config/device.json.example \
+    > /etc/pollinator/device.json
+  echo "!! Seeded /etc/pollinator/device.json with device_id=$(hostname)."
+  echo "!! The ROI/focus values in it are examples — recalibrate in the field UI."
 fi
+chown root:pollinator /etc/pollinator/device.json
+chmod 0664 /etc/pollinator/device.json
 
 install -m 0644 "$SRC"/systemd/*.service /etc/systemd/system/
 install -d /etc/systemd/system/pollinator-cam.service.d

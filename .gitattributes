@@ -1,0 +1,5 @@
+# Everything in this repo runs on Linux (the Pis). Force LF line endings so a
+# clone on Windows can't produce scripts that fail with "bash\r: not found".
+* text=auto eol=lf
+*.jpg binary
+*.png binary
